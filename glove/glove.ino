@@ -60,14 +60,14 @@ void transmit(int address, int val) {
 
 void update_values(int address) {
     transmit(address, 0x3B);
-    Wire.requestFrom(MPU,6);
+    Wire.requestFrom(address, 6);
     while (Wire.available() < 6);
     accelX = (Wire.read() << 8) | Wire.read(); 
     accelY = (Wire.read() << 8) | Wire.read(); 
     accelZ = (Wire.read() << 8) | Wire.read(); 
 
     transmit(address, 0x43);
-    Wire.requestFrom(MPU,6);
+    Wire.requestFrom(address, 6);
     while (Wire.available() < 6);
     gyroX = (Wire.read() << 8) | Wire.read(); 
     gyroY = (Wire.read() << 8) | Wire.read();
@@ -75,29 +75,66 @@ void update_values(int address) {
 }
 
 
-void handleAccel(int address) {
-  update_values(address);
+void handleMPU(int address) {
+    update_values(address);
 
-  Serial.print(accelX);
-  Serial.print(" ");
-  Serial.print(accelY);
-  Serial.print(" ");
-  Serial.print(accelZ);
-  Serial.print(" || ");
+    Serial.print(accelX);
+    Serial.print(" ");
+    Serial.print(accelY);
+    Serial.print(" ");
+    Serial.print(accelZ);
+    Serial.print(" || ");
 
-  Serial.print(gyroX);
-  Serial.print(" ");
-  Serial.print(gyroY);
-  Serial.print(" ");
-  Serial.print(gyroZ);
-  Serial.println(" ");
+    Serial.print(gyroX);
+    Serial.print(" ");
+    Serial.print(gyroY);
+    Serial.print(" ");
+    Serial.print(gyroZ);
+    Serial.println(" ");
 
-  /* LOGIC */
+    /*char data[2][4] = {'w', 'a', 's', 'd', 'i', 'j', 'k', 'l'};
+    int xVal = accelX;
+    int yVal = accelY;
+    int joystickEps = 5000;
+    int mid = -700;
+    
+    int num = 0;
+    if (address == 0x69) {
+        num = 1;
+    }
+
+    if (xVal > mid + joystickEps) {
+      //Keyboard.press(data[num][0]);
+      Serial.print(data[num][0]);
+    } else {
+      Keyboard.release(data[num][0]);
+    }
+    
+    if (xVal < mid - joystickEps) {
+      //Keyboard.press(data[num][2]);
+      Serial.print(data[num][2]);
+    } else {
+      Keyboard.release(data[num][2]);
+    }
+    
+    if (yVal > mid + joystickEps) {
+      //Keyboard.press(data[num][1]);
+      Serial.print(data[num][1]);
+    } else {
+      Keyboard.release(data[num][1]);
+    }
+    
+    if (yVal < mid - joystickEps) {
+      //Keyboard.press(data[num][3]);
+      Serial.print(data[num][3]);
+    } else {
+      Keyboard.release(data[num][3]);
+    }*/
 }
 
 void handleJoystick(int xPin, int yPin, int num) {
     char data[2][4] = {'f', 'a', 'r', 'd', 'o', 'p', '[', ']'};
-    int xVal = analogRead(xPin);//
+    int xVal = analogRead(xPin);
     int yVal = analogRead(yPin);
     int joystickEps = 200;
     int mid = 512;
@@ -137,12 +174,28 @@ int getBurstDistance(bool burst) {
     return sum / BURST_AMOUNT;
 }
 
+int active = 0;
+int abc = 0;
 void loop() { 
-  handleJoystick(F_XAXIS, F_YAXIS, 0);
-  handleJoystick(S_XAXIS, S_YAXIS, 1);
+    abc++;
+    Serial.print(abc);
+    Serial.print(" ");
+    //handleJoystick(F_XAXIS, F_YAXIS, 0);
+    //handleJoystick(S_XAXIS, S_YAXIS, 1);
   
-  if (sensor.getBurstDistance(false) < MINIMAL_HEIGHT) {
+  /*if (getBurstDistance(false) < MINIMAL_HEIGHT) {
+    if (active == 0) {
+      delay(1000);
+    }
+    active = 1;
     handleMPU(I2C_L);
     handleMPU(I2C_R);
-  }
+  } else {
+    active = 0;
+  }*/
+
+    handleMPU(I2C_L);
+    handleMPU(I2C_R);
+
+    delay(200);
 }

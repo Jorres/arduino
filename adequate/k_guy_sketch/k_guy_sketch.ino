@@ -1,6 +1,14 @@
-#include <Keyboard.h>
-#include <Wire.h>
+// The accuracy is 16-bits.
 //
+// Temperature sensor from -40 to +85 degrees Celsius
+//   340 per degrees, -512 at 35 degrees.
+//
+// At power-up, all registers are zero, except these two:
+//      Register 0x6B (PWR_MGMT_2) = 0x40  (I read zero).
+//      Register 0x75 (WHO_AM_I)   = 0x68.
+//
+ 
+#include <Wire.h>
 #define MPU6050_AUX_VDDIO          0x01   // R/W
 #define MPU6050_SMPLRT_DIV         0x19   // R/W
 #define MPU6050_CONFIG             0x1A   // R/W
@@ -89,6 +97,13 @@
 #define MPU6050_FIFO_R_W           0x74   // R/W
 #define MPU6050_WHO_AM_I           0x75   // R
  
+ 
+// Defines for the bits, to be able to change
+// between bit number and binary definition.
+// By using the bit number, programming the sensor
+// is like programming the AVR microcontroller.
+// But instead of using "(1<<X)", or "_BV(X)",
+// the Arduino "bit(X)" is used.
 #define MPU6050_D0 0
 #define MPU6050_D1 1
 #define MPU6050_D2 2
@@ -101,6 +116,10 @@
 // AUX_VDDIO Register
 #define MPU6050_AUX_VDDIO MPU6050_D7  // I2C high: 1=VDD, 0=VLOGIC
  
+// CONFIG Register
+// DLPF is Digital Low Pass Filter for both gyro and accelerometers.
+// These are the names for the bits.
+// Use these only with the bit() macro.
 #define MPU6050_DLPF_CFG0     MPU6050_D0
 #define MPU6050_DLPF_CFG1     MPU6050_D1
 #define MPU6050_DLPF_CFG2     MPU6050_D2
@@ -279,6 +298,9 @@
 #define MPU6050_I2C_MST_CLK_381KHZ MPU6050_I2C_MST_CLK_14
 #define MPU6050_I2C_MST_CLK_364KHZ MPU6050_I2C_MST_CLK_15
  
+// I2C_SLV0_ADDR Register
+// These are the names for the bits.
+// Use these only with the bit() macro.
 #define MPU6050_I2C_SLV0_RW MPU6050_D7
  
 // I2C_SLV0_CTRL Register
@@ -560,17 +582,17 @@
 // Some sensor boards have AD0 high, and the
 // I2C address thus becomes 0x69.
 #define MPU6050_I2C_ADDRESS 0x68
-
-//
-
-const int BTN1 = 12;
-
-const int F_XAXIS = A0;
-const int F_YAXIS = A1;
-
-const int S_XAXIS = A3;
-const int S_YAXIS = A2;
  
+ 
+// Declaring an union for the registers and the axis values.
+// The byte order does not match the byte order of
+// the compiler and AVR chip.
+// The AVR chip (on the Arduino board) has the Low Byte
+// at the lower address.
+// But the MPU-6050 has a different order: High Byte at
+// lower address, so that has to be corrected.
+// The register part "reg" is only used internally,
+// and are swapped in code.
 typedef union accel_t_gyro_union
 {
   struct
@@ -580,7 +602,7 @@ typedef union accel_t_gyro_union
     uint8_t y_accel_h;
     uint8_t y_accel_l;
     uint8_t z_accel_h;
-    uint8_t z_accel_l;//
+    uint8_t z_accel_l;
     uint8_t t_h;
     uint8_t t_l;
     uint8_t x_gyro_h;
@@ -602,17 +624,75 @@ typedef union accel_t_gyro_union
   } value;
 };
  
-
-
-int x_axis_accel = 0, y_axis_accel = 0;
-void get_n_vector()
+ 
+void setup()
+{      
+  int error;
+  uint8_t c;
+ 
+ 
+  Serial.begin(9600);
+  Serial.println(F("InvenSense MPU-6050"));
+  Serial.println(F("June 2012"));
+ 
+  // Initialize the 'Wire' class for the I2C-bus.
+  Wire.begin();
+ 
+ 
+  // default at power-up:
+  //    Gyro at 250 degrees second
+  //    Acceleration at 2g
+  //    Clock source at internal 8MHz
+  //    The device is in sleep mode.
+  //
+ 
+  error = MPU6050_read (MPU6050_WHO_AM_I, &c, 1);
+  Serial.print(F("WHO_AM_I : "));
+  Serial.print(c,HEX);
+  Serial.print(F(", error = "));
+  Serial.println(error,DEC);
+ 
+  // According to the datasheet, the 'sleep' bit
+  // should read a '1'.
+  // That bit has to be cleared, since the sensor
+  // is in sleep mode at power-up.
+  error = MPU6050_read (MPU6050_PWR_MGMT_1, &c, 1);
+  Serial.print(F("PWR_MGMT_1 : "));
+  Serial.print(c,HEX);
+  Serial.print(F(", error = "));
+  Serial.println(error,DEC);
+ 
+ 
+  // Clear the 'sleep' bit to start the sensor.
+  MPU6050_write_reg (MPU6050_PWR_MGMT_1, 0);
+}
+ 
+ 
+void loop()
 {
   int error;
   double dT;
   accel_t_gyro_union accel_t_gyro;
-
+ 
+ 
+  Serial.println(F(""));
+  Serial.println(F("MPU-6050"));
+ 
+  // Read the raw values.
+  // Read 14 bytes at once,
+  // containing acceleration, temperature and gyro.
+  // With the default settings of the MPU-6050,
+  // there is no filter enabled, and the values
+  // are not very stable.
   error = MPU6050_read (MPU6050_ACCEL_XOUT_H, (uint8_t *) &accel_t_gyro, sizeof(accel_t_gyro));
-
+  Serial.print(F("Read accel, temp and gyro, error = "));
+  Serial.println(error,DEC);
+ 
+ 
+  // Swap all high and low bytes.
+  // After this, the registers values are swapped,
+  // so the structure name like x_accel_l does no
+  // longer contain the lower byte.
   uint8_t swap;
   #define SWAP(x,y) swap = x; x = y; y = swap
  
@@ -624,17 +704,59 @@ void get_n_vector()
   SWAP (accel_t_gyro.reg.y_gyro_h, accel_t_gyro.reg.y_gyro_l);
   SWAP (accel_t_gyro.reg.z_gyro_h, accel_t_gyro.reg.z_gyro_l);
  
-  x_axis_accel = accel_t_gyro.value.x_accel;
-  y_axis_accel = accel_t_gyro.value.y_accel;
- //accel_t_gyro.value.x_gyro
  
-  //Serial.print(F("temperature: "));
-  //dT = ( (double) accel_t_gyro.value.temperature + 12412.0) / 340.0;
-  //Serial.print(dT, 3);
-  //Serial.print(F(" degrees Celsius"));
-  //Serial.println(F(""));
+  // Print the raw acceleration values
+ 
+  Serial.print(F("accel x,y,z: "));
+  Serial.print(accel_t_gyro.value.x_accel, DEC);
+  Serial.print(F(", "));
+  Serial.print(accel_t_gyro.value.y_accel, DEC);
+  Serial.print(F(", "));
+  Serial.print(accel_t_gyro.value.z_accel, DEC);
+  Serial.println(F(""));
+ 
+ 
+  // The temperature sensor is -40 to +85 degrees Celsius.
+  // It is a signed integer.
+  // According to the datasheet:
+  //   340 per degrees Celsius, -512 at 35 degrees.
+  // At 0 degrees: -512 - (340 * 35) = -12412
+ 
+  Serial.print(F("temperature: "));
+  dT = ( (double) accel_t_gyro.value.temperature + 12412.0) / 340.0;
+  Serial.print(dT, 3);
+  Serial.print(F(" degrees Celsius"));
+  Serial.println(F(""));
+ 
+ 
+  // Print the raw gyro values.
+ 
+  Serial.print(F("gyro x,y,z : "));
+  Serial.print(accel_t_gyro.value.x_gyro, DEC);
+  Serial.print(F(", "));
+  Serial.print(accel_t_gyro.value.y_gyro, DEC);
+  Serial.print(F(", "));
+  Serial.print(accel_t_gyro.value.z_gyro, DEC);
+  Serial.print(F(", "));
+  Serial.println(F(""));
+ 
+  delay(200);
 }
-
+ 
+ 
+// --------------------------------------------------------
+// MPU6050_read
+//
+// This is a common function to read multiple bytes
+// from an I2C device.
+//
+// It uses the boolean parameter for Wire.endTransMission()
+// to be able to hold or release the I2C-bus.
+// This is implemented in Arduino 1.0.1.
+//
+// Only this function is used to read.
+// There is no function for a single byte.
+//
 int MPU6050_read(int start, uint8_t *buffer, int size)
 {
   int i, n, error;
@@ -660,7 +782,27 @@ int MPU6050_read(int start, uint8_t *buffer, int size)
  
   return (0);  // return : no error
 }
-
+ 
+ 
+// --------------------------------------------------------
+// MPU6050_write
+//
+// This is a common function to write multiple bytes to an I2C device.
+//
+// If only a single register is written,
+// use the function MPU_6050_write_reg().
+//
+// Parameters:
+//   start : Start address, use a define for the register
+//   pData : A pointer to the data to write.
+//   size  : The number of bytes to write.
+//
+// If only a single register is written, a pointer
+// to the data has to be used, and the size is
+// a single byte:
+//   int data = 0;        // the data to write
+//   MPU6050_write (MPU6050_PWR_MGMT_1, &c, 1);
+//
 int MPU6050_write(int start, const uint8_t *pData, int size)
 {
   int n, error;
@@ -680,7 +822,15 @@ int MPU6050_write(int start, const uint8_t *pData, int size)
  
   return (0);         // return : no error
 }
-
+ 
+// --------------------------------------------------------
+// MPU6050_write_reg
+//
+// An extra function to write a single register.
+// It is just a wrapper around the MPU_6050_write()
+// function, and it is only a convenient function
+// to make it easier to write a single register.
+//
 int MPU6050_write_reg(int reg, uint8_t data)
 {
   int error;
@@ -690,97 +840,3 @@ int MPU6050_write_reg(int reg, uint8_t data)
   return (error);
 }
 
-void setup() {
-  int error;
-  uint8_t c;
-
-  Serial.begin(9600);
-  delay(50); 
-  Wire.begin();
-  delay(50); 
-  Keyboard.begin(); 
-  
-  error = MPU6050_read (MPU6050_WHO_AM_I, &c, 1);
-  error = MPU6050_read (MPU6050_PWR_MGMT_1, &c, 1);
- 
-  MPU6050_write_reg(MPU6050_PWR_MGMT_1, 0);
-  
-  /*pinMode(F_XAXIS, INPUT);
-  pinMode(F_YAXIS, INPUT);
-  
-  pinMode(S_XAXIS, INPUT);
-  pinMode(S_YAXIS, INPUT);*/
-
- // pinMode(BTN1, INPUT);
-}
-
-void handleAccel() {
-  int BORDER = 5000;
-  get_n_vector();
-  int x = x_axis_accel, y = y_axis_accel;
-  if (x < -BORDER) {
-    Keyboard.print('w'); //
-  } else if (x > BORDER) {
-    Keyboard.print('s');
-  }
-
-  if (y < -BORDER) {
-    Keyboard.print('r');
-  } else if (y > BORDER) {
-    Keyboard.print('l');
-  }
-}
-
-void handleJoystick(int xPin, int yPin, int num) {
-    char data[2][4] = {'f', 'a', 'r', 'd', 'o', 'p', '[', ']'};
-    int xVal = analogRead(xPin);//
-    int yVal = analogRead(yPin);
-    int joystickEps = 200;
-    int mid = 512;
-
-    if (xVal > mid + joystickEps) {
-      Keyboard.press(data[num][0]);
-    } else {
-      Keyboard.release(data[num][0]);
-    }
-    
-    if (xVal < mid - joystickEps) {
-      Keyboard.press(data[num][2]);
-    } else {
-      Keyboard.release(data[num][2]);
-    }
-    
-    if (yVal > mid + joystickEps) {
-      Keyboard.press(data[num][1]);
-    } else {
-      Keyboard.release(data[num][1]);
-    }
-    
-    if (yVal < mid - joystickEps) {
-      Keyboard.press(data[num][3]);
-    } else {
-      Keyboard.release(data[num][3]);
-    }
-}
-
-int accelState = 0;
-int cooldown = 0;
-
-void loop() { 
-  handleJoystick(F_XAXIS, F_YAXIS, 0);
-  handleJoystick(S_XAXIS, S_YAXIS, 1);
-  
-  
-  if (accelState == 1) {
-    handleAccel();
-  }
-  if (digitalRead(BTN1) == 1) {
-    if (cooldown <= 0) 
-      accelState = 1 - accelState;
-    cooldown = 10;
-  }
-
-  cooldown--;
-  
-  delay(50);
-}
